@@ -2,16 +2,22 @@ import sys
 import os
 import re
 
+
 class DynLoad(object):
     """Dynamically loads all .py([oc]?) files in a folder
     
     TODO: Build the exception classes
     
     """
-    def __init__(self, path = None):
+    def __init__(self, path=None):
         if path:
             self.set_path(path)
-        self.dyn_modules = {'loaded':set(), 'failed':set()}
+        self.dyn_modules = {'loaded': set(), 'failed': set()}
+        #======================================
+        # find files with non-numeric names that
+        # end with .py .pyc .pyo or .pyd
+        #======================================
+        self.rx_find_py = re.compile('^(\w+)\.(?:py|pyc|pyo|pyd)$')
         
     def set_path(self, directory):
         """Set the folder path to look for python files"""
@@ -29,12 +35,6 @@ class DynLoad(object):
     def __find_python_files(self, path):
         """private interator function that searchs for python files"""
         #======================================
-        # find files with non-numeric names that
-        # end with .py .pyc .pyo or .pyd
-        #======================================
-        rx_find_py = re.compile('^(\w+)\.(?:py|pyc|pyo|pyd)$')
-        
-        #======================================
         # check each file found in the directory
         # to see if it is python, if it is
         # return the file to the calling function
@@ -42,13 +42,15 @@ class DynLoad(object):
         for f in os.listdir(self.__path):
             f_path = os.path.join(self.__path, f)
             if os.path.isfile(f_path):
-                rx_result = rx_find_py.search(f)
+                rx_result = self.rx_find_py.search(f)
                 if rx_result:
                     yield rx_result.group(1)
     
     def load_modules(self):
         """import modules in the directory 
         those that cannot be loaded are skipped
+        
+        TODO: return imported and failed modules in a dict
         
         """
         for module in self.__find_python_files(self.__path):
@@ -71,34 +73,41 @@ class DynLoad(object):
                     self.dyn_modules['failed'].add(module)
                 else:
                     self.dyn_modules['loaded'].add(module)
-   
+
+
 class AddRoute(object):
     """
     Decorator that tracks and allows generation of new routes within
     the python file itself rather that declared upfront.
     """
     _routes = []
-    def __init__(self, arg):
+
+    def __init__(self, arg, **kwargs):
         """ 
         route keeper arguments
         """
         self._arg = arg
+        self._kwargs = kwargs
         
     def __call__(self, route_handler):
-        '''
+        """
         The part that calls the internal function
-        '''
+        """
         # Add the route to the internal structure
-        self._routes.append((self._arg, route_handler))
+        if self._kwargs.get('r_type', None) == '404':
+            self._routes.append((self._arg, route_handler))
+        else:
+            self._routes.insert(0, (self._arg, route_handler))
+
         def wrapper(*args, **kwargs):
             return route_handler(*args, **kwargs)
         return wrapper
     
     @classmethod   
-    def get_routes(self):
-        return self._routes
+    def get_routes(cls):
+        return cls._routes
     
     @classmethod   
-    def get_paths(self):
-        for path in [l[0] for l in self._routes]:
+    def get_paths(cls):
+        for path in [l[0] for l in cls._routes]:
             yield path
